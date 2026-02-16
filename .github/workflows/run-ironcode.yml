@@ -25,5 +25,5 @@ jobs:
         run: cargo build --release
         working-directory: packages/ironcode/native/tool # Build native library
 
-      - name: Run IronCode
-        run: bun run dev
+      - name: Run IronCode typecheck
+        run: bun run typecheck
