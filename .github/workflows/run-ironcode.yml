@@ -20,7 +20,7 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Setup Bun
-        uses: ./.github/actions/setup-bun
+        uses: oven-sh/setup-bun@v1
 
       - name: Run IronCode
         run: bun run dev
