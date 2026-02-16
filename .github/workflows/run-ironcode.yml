@@ -24,4 +24,3 @@ jobs:
 
       - name: Run IronCode
         run: bun run dev
-        working-directory: IronCode
