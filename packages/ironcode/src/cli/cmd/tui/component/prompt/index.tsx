@@ -16,7 +16,6 @@ import { DialogStash } from "../dialog-stash"
 import { type AutocompleteRef, Autocomplete } from "./autocomplete"
 import { useCommandDialog } from "../dialog-command"
 import { useRenderer } from "@opentui/solid"
-import { Editor } from "@tui/util/editor"
 import { useExit } from "../../context/exit"
 import { Clipboard } from "../../util/clipboard"
 import type { FilePart } from "@ironcode-ai/sdk/v2"
@@ -28,10 +27,12 @@ import { createColors, createFrames } from "../../ui/spinner.ts"
 import { useDialog } from "@tui/ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
 import { DialogAlert } from "../../ui/dialog-alert"
+import { DialogConfirm } from "../../ui/dialog-confirm"
 import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { useTextareaKeybindings } from "../textarea-keybindings"
 import { DialogSkill } from "../dialog-skill"
+import { Editor } from "@tui/util/editor"
 
 export type PromptProps = {
   sessionID?: string
@@ -239,6 +240,31 @@ export function Prompt(props: PromptProps) {
         },
         onSelect: async (dialog) => {
           dialog.clear()
+
+          let { found } = Editor.resolve()
+          if (!found) {
+            const installInfo = Editor.installCommand()
+            const install = await DialogConfirm.show(
+              dialog,
+              "Editor not found",
+              installInfo
+                ? `No editor found. Install Neovim now?\n\n  ${installInfo.hint}\n\nOr set the EDITOR environment variable.`
+                : "No editor found. Please install Neovim manually and try again.\n\nOr set the EDITOR environment variable.",
+            )
+            if (!install || !installInfo) return
+
+            const success = await Editor.install(renderer)
+            if (!success) {
+              await DialogAlert.show(
+                dialog,
+                "Install failed",
+                `Neovim installation failed. Please install manually:\n\n  ${installInfo.hint}`,
+              )
+              return
+            }
+            ;({ found } = Editor.resolve())
+            if (!found) return
+          }
 
           // replace summarized text parts with the actual text
           const text = store.prompt.parts
@@ -599,6 +625,39 @@ export function Prompt(props: PromptProps) {
             ...x,
           })),
       })
+    } else if (
+      inputText.startsWith("/") &&
+      iife(() => {
+        const name = inputText.split("\n")[0].split(" ")[0].slice(1)
+        return command.slashes().some((x) => {
+          const display = x.display.slice(1) // remove leading "/"
+          return display === name || x.aliases?.some((a) => a.slice(1) === name)
+        })
+      })
+    ) {
+      const name = inputText.split("\n")[0].split(" ")[0].slice(1)
+      const slash = command.slashes().find((x) => {
+        const display = x.display.slice(1)
+        return display === name || x.aliases?.some((a) => a.slice(1) === name)
+      })
+      // Pass the current dialog into the slash handler to provide context
+      // Many command handlers expect a dialog argument; calling without it
+      // can lead to no-ops or errors.
+      slash?.onSelect()
+    } else if (
+      inputText.startsWith("/") &&
+      !inputText.startsWith("/ ") &&
+      iife(() => {
+        const firstWord = inputText.split("\n")[0].split(" ")[0]
+        return firstWord.length > 1 && /^\/[a-z][\w-]*$/i.test(firstWord)
+      })
+    ) {
+      const name = inputText.split("\n")[0].split(" ")[0]
+      toast.show({
+        message: `Unknown command: ${name}`,
+        variant: "error",
+      })
+      return
     } else {
       sdk.client.session
         .prompt({
@@ -1115,6 +1174,10 @@ export function Prompt(props: PromptProps) {
                   </text>
                   <text fg={theme.text}>
                     {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
+                  </text>
+                  <text fg={theme.text}>
+                    {keybind.print("review_toggle" as any)} <span style={{ fg: theme.textMuted }}>changes</span>
+                    {props.hint}
                   </text>
                 </Match>
                 <Match when={store.mode === "shell"}>

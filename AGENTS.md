@@ -1,243 +1,126 @@
 # IronCode Agent Guidelines
 
-This document provides essential information for AI coding agents working in the IronCode repository.
+This repository is a Bun-based monorepo with TypeScript web/CLI packages and native Rust components. This document gives precise, actionable rules for agentic coding assistants operating here. Keep edits minimal, consistent with existing conventions, and non-destructive unless explicitly requested.
 
-## Project Overview
+Project essentials
 
-- **Type**: Bun workspace monorepo with TypeScript/Rust hybrid architecture
-- **Default branch**: `dev` (local `main` may not exist; use `dev` or `origin/dev` for diffs)
-- **Package manager**: Bun 1.3.8 (exact version required)
-- **Primary runtime**: Bun (not Node.js)
-- **Build orchestration**: Turbo 2.5.6
+- Monorepo: Bun workspace (packages/\* and packages/sdk/js). Native parts use Cargo/Tauri.
+- Default branch: `dev` — create branches from `dev` and open PRs against it.
+- Package manager: Bun (CI expects Bun 1.3.x). Use Bun CLI for JS/TS tasks and Cargo for Rust.
 
-## Build, Lint, and Test Commands
+Quick commands (run from repo root)
 
-### Root Commands (run from repo root)
+- Development
+  - `bun dev` — run core CLI/TUI in `packages/ironcode`
+  - `bun run dev:web` — run the web app (packages/app)
+  - `bun run dev:desktop` — run desktop (Tauri) dev environment
 
-```bash
-bun dev                 # Run CLI/TUI (packages/ironcode)
-bun run dev:desktop     # Run Tauri desktop app
-bun run dev:web         # Run web app dev server (packages/app)
-bun typecheck           # Type check all packages via Turbo
-```
+- Tests & typecheck
+  - `bun test` — run tests for the current package (run this from the package dir)
+  - From repo root to run tests in a package: `bun --cwd packages/ironcode test`
+  - Run a single file: `bun test packages/ironcode/test/foo.test.ts` or from package dir `bun test path/to/file.test.ts`
+  - Filter by test name: `bun test --filter "name"`
+  - Typecheck workspace: `bun run typecheck` or `bun typecheck` (runs Turbo/TS)
 
-### Core Package (packages/ironcode)
+- Build & native
+  - JS/TS build: `bun run build` (run in specific package dir for package builds)
+  - Web production build: `bun --cwd packages/app run build` or `bun run --cwd packages/app build`
+  - Rust tests/benches: `cargo test` / `cargo bench` in `packages/ironcode/native/tool` or respective crate dir
 
-```bash
-bun test                # Run all unit tests
-bun test path/to/file.test.ts  # Run single test file
-bun run typecheck       # TypeScript type checking
-bun run build           # Build standalone executable
-bun run dev             # Run CLI locally
-```
+- Utilities
+  - Format workspace: `./script/format.ts`
+  - Regenerate SDKs: `./script/generate.ts` (run after changing HTTP routes or handler signatures)
 
-### App Package (packages/app)
+Cursor / Copilot rules
 
-```bash
-bun dev                 # Vite dev server
-bun run build           # Production build
-bun run test:unit       # Unit tests with HappyDOM
-bun run test:unit:watch # Unit tests in watch mode
-bun run test:e2e        # Playwright E2E tests
-bun run test:e2e:ui     # Playwright UI mode
-bun typecheck           # Type checking
-```
+- I searched for repository rules: there are no `.cursor/rules/`, `.cursorrules`, or `.github/copilot-instructions.md` files present. If such files are added later, import them verbatim and prioritize those rules over this document.
 
-### Native Components (packages/ironcode/native/tool)
+Code style & conventions (for agents)
 
-```bash
-cargo test              # Run Rust unit tests
-cargo bench             # Run benchmarks
-```
+- General
+  - Single responsibility: functions should do one thing and be small.
+  - Prefer composition and small helpers over nested conditionals; use early returns and guard clauses.
+  - Use `const` by default; `let` only when state is intentionally mutable.
+  - Avoid `any`. Prefer inferred types, explicit interfaces, generics, or `unknown` converted via validation.
+  - Favor pure helpers for domain logic; push side effects to IO boundaries.
 
-### Formatting
+- Imports
+  - Use relative imports for local modules (e.g. `import { x } from "../x"`).
+  - Prefer named imports for local modules; avoid default exports for local code unless the module naturally represents a single primary value.
+  - Use ESM syntax across the workspace (`"type": "module"` in root package.json).
 
-```bash
-./script/format.ts      # Format all files with Prettier
-```
+- Naming
+  - Variables & functions: camelCase (e.g., `getUserById`).
+  - Types, interfaces, classes, enums: PascalCase (e.g., `UserProfile`, `DbResult`).
+  - Constants: UPPER_SNAKE when truly constant across runtime (rare).
+  - DB column names (Drizzle): snake_case.
 
-### SDK Regeneration
+- Files & modules
+  - One main exported responsibility per file when it improves discoverability.
+  - Keep tests colocated with implementation under `test/` or in the same package's `test` directory.
 
-```bash
-./script/generate.ts    # Regenerate SDK from OpenAPI spec
-# Run after modifying server endpoints in packages/ironcode/src/server/server.ts
-```
+- Formatting & linting
+  - Prettier config: `semi: false`, `printWidth: 120` (root package.json). Use `./script/format.ts` to apply workspace formatting.
+  - Editor conventions: LF line endings, UTF-8, 2-space indent.
+  - Line length: aim for 80 in editors; formatted files are allowed up to 120.
 
-## Code Style Guidelines
+- Types & validation
+  - Use Zod for runtime validation of external inputs (HTTP payloads, CLI args, config files).
+  - Prefer TypeScript types/interfaces and discriminated unions for internal shapes and variant modelling.
+  - Convert `unknown` to typed shapes as soon as possible using validators.
 
-### General Principles
+- Error handling
+  - Avoid throwing for predictable control flow. Prefer Result-like return types for internal APIs (e.g., `Result<T, E>` pattern).
+  - Use `try`/`catch` at IO and boundary layers; convert external errors to typed or canonical error shapes before returning/upstreaming.
+  - For promises where inline handling is appropriate, use `.catch()` and log context.
 
-- Keep logic in one function unless composable or reusable
-- Avoid `try`/`catch` blocks where possible (prefer Result patterns)
-- Avoid using the `any` type
-- Prefer single-word variable names where possible
-- **Use Bun APIs** when possible: `Bun.file()`, `Bun.write()`, etc.
-- Rely on type inference; avoid explicit type annotations unless needed for exports or clarity
-- Prefer functional array methods (`flatMap`, `filter`, `map`) over for loops
-- Use type guards with `filter` to maintain type inference downstream
+- Logging & observability
+  - Use structured logging helpers: `Log.create({ service: "name" })` when available. Always include context (IDs, paths) with logs.
 
-### Imports
+Testing guidance
 
-- Use relative imports for local modules
-- Prefer named imports over default imports
-- ESM only (`"type": "module"` in all packages)
+- Use Bun's test runner. Tests naming: unit `*.test.ts`, integration/e2e `*.spec.ts`.
+- Prefer real implementations in unit tests where fast and deterministic; mock external HTTP/DB only for slow or non-deterministic dependencies.
+- From repo root: run a package test suite with `bun --cwd packages/<package> test`.
+- To run a single test file: `bun test packages/<package>/test/that.test.ts` (or cd into the package and run `bun test path/to/file.test.ts`).
 
-```ts
-// Good
-import { Tool } from "../tool/tool"
-import { Session } from "./session"
+Git, commits & PR safety
 
-// Avoid
-import Tool from "../tool/tool"
-```
+- Never commit directly to `main`. Branch from `dev` and open a PR for review.
+- Avoid destructive git operations. Never use `git reset --hard` or force-push to shared branches without explicit permission.
+- Commit rules when asked to commit:
+  1. Stage only intended files.
+  2. Use a concise commit message (1–2 sentences) focused on the why.
+  3. Do not amend pushed commits or force-push public branches unless explicitly authorized.
 
-### Naming Conventions
+Rules for automated edits (agents)
 
-- **Variables/functions**: camelCase, prefer single words
-- **Classes/namespaces**: PascalCase
-- **Database fields**: snake_case (Drizzle schemas)
-- Inline values used only once to reduce variable count
+- Prefer `apply_patch` for single-file edits; make minimal, targeted patches.
+- Do not modify unrelated files. If a larger change is necessary, explain the reason in the commit message.
+- If you change server routes or handler signatures, run `./script/generate.ts` to regenerate SDKs and update `packages/sdk`.
+- When tests exist, run relevant tests locally: `bun --cwd packages/<package> test path/to/test` before committing. If you cannot run tests, list which tests to run and why.
 
-```ts
-// Good
-const foo = 1
-function journal(dir: string) {}
-const journal = await Bun.file(path.join(dir, "journal.json")).json()
+Where to look (quick pointers)
 
-// Bad
-const fooBar = 1
-function prepareJournal(dir: string) {}
-const journalPath = path.join(dir, "journal.json")
-const journal = await Bun.file(journalPath).json()
-```
+- Core CLI & server: `packages/ironcode/src` — server routes at `packages/ironcode/src/server/routes/session.ts`.
+- Web frontend: `packages/app`.
+- Native tooling / Rust: `packages/ironcode/native/tool`.
+- SDK generation & formatting scripts: `script/generate.ts`, `script/format.ts`.
 
-### Destructuring
+If you update this file
 
-Avoid unnecessary destructuring. Use dot notation to preserve context.
+- Keep edits short and machine-friendly. When adding repo-wide rules (cursor/copilot), include exact file paths and import instructions.
 
-```ts
-// Good
-obj.a
-obj.b
+Escalation / questions
 
-// Bad
-const { a, b } = obj
-```
+- If blocked by missing credentials or a destructive decision, ask one focused question and include a recommended default. Do other non-blocking work first.
 
-### Variables
+Short checklist for new agent runs
 
-Prefer `const` over `let`. Use ternaries or early returns instead of reassignment.
+1. Run `bun --version` and `bun --cwd packages/ironcode --version` to verify Bun version.
+2. Run `bun --cwd packages/ironcode test --filter "your test name"` to execute a focused test.
+3. Use `./script/format.ts` before committing formatting-sensitive changes.
 
-```ts
-// Good
-const foo = condition ? 1 : 2
+This document is intentionally pragmatic: follow patterns in the codebase, run the tests for changed packages, and prefer minimal, well-justified edits.
 
-// Bad
-let foo
-if (condition) foo = 1
-else foo = 2
-```
-
-### Control Flow
-
-Avoid `else` statements. Prefer early returns and guard clauses.
-
-```ts
-// Good
-function foo() {
-  if (condition) return 1
-  return 2
-}
-
-// Bad
-function foo() {
-  if (condition) return 1
-  else return 2
-}
-```
-
-### Error Handling
-
-- Prefer Result patterns over throwing exceptions in tools
-- Use `.catch()` on promises when appropriate
-- Avoid `try`/`catch` unless absolutely necessary
-
-### Type Definitions
-
-- Use Zod schemas for runtime validation
-- Use TypeScript interfaces/types for structure
-- Leverage catalog versioning for shared dependencies (see `workspaces.catalog` in root `package.json`)
-
-### Schema Definitions (Drizzle ORM)
-
-Use snake_case for field names so column names don't need string redefinition.
-
-```ts
-// Good
-const table = sqliteTable("session", {
-  id: text().primaryKey(),
-  project_id: text().notNull(),
-  created_at: integer().notNull(),
-})
-
-// Bad
-const table = sqliteTable("session", {
-  id: text("id").primaryKey(),
-  projectID: text("project_id").notNull(),
-  createdAt: integer("created_at").notNull(),
-})
-```
-
-## Architecture Patterns
-
-- **Namespace-based organization**: `Tool.define()`, `Session.create()`, `Log.create()`
-- **Dependency injection**: Use `App.provide()` for DI container
-- **Event bus**: `Bus.subscribe()` for pub/sub patterns
-- **Result patterns**: For error handling in tools
-- **API communication**: TUI (SolidJS + OpenTUI) communicates with server via `@ironcode-ai/sdk`
-
-## Testing Guidelines
-
-- **Framework**: Bun's built-in test runner (`bun:test`)
-- **Test patterns**: `*.test.ts` for unit tests, `*.spec.ts` for E2E (Playwright)
-- **Philosophy**:
-  - Avoid mocks as much as possible
-  - Test actual implementation, not mock behavior
-  - Don't duplicate business logic into tests
-- **Test organization**: Colocated in `test/` directories or alongside source
-
-```ts
-// Example test structure
-import { describe, expect, test } from "bun:test"
-import { Scheduler } from "../src/scheduler"
-
-describe("Scheduler.register", () => {
-  test("defaults to instance scope per directory", async () => {
-    // Test implementation
-    expect(runs.count).toBe(1)
-  })
-})
-```
-
-## Formatting Rules
-
-- **Formatter**: Prettier 3.6.2
-- **Config**: `semi: false`, `printWidth: 120`
-- **Line endings**: LF (Unix-style)
-- **Charset**: UTF-8
-- **Indentation**: 2 spaces
-- **Max line length**: 80 (EditorConfig), 120 (Prettier)
-- **Insert final newline**: Yes
-
-## Git Workflow
-
-- **Pre-push hooks**: Validates Bun version and runs `bun typecheck`
-- Always use parallel tools when applicable
-- Prefer automation: execute requested actions without confirmation unless blocked by missing info or safety concerns
-
-## Important Notes
-
-- Never commit directly to `main` (if it exists); use `dev` branch
-- After modifying server endpoints, regenerate SDK with `./script/generate.ts`
-- Use Bun APIs (`Bun.file()`) instead of Node.js equivalents (`fs.readFile()`)
-- Version catalog in root `package.json` centralizes dependency versions across packages
+File location: `AGENTS.md`

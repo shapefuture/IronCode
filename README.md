@@ -24,6 +24,80 @@
 
 ## 🎉 What's New
 
+### Feb 23, 2026 - Local Code Search (BM25 + tree-sitter)
+
+**Offline semantic code search — no embeddings, no ML model download required:**
+
+- **`search_codebase` tool** - New AI tool that finds functions, classes, and symbols by concept rather than exact text
+  - BM25 full-text ranking (same algorithm used by Elasticsearch/Lucene)
+  - tree-sitter AST parsing — extracts named symbols (functions, classes, interfaces, enums, methods, etc.) per language
+  - Understands camelCase/snake_case: `getUserById` → tokens `[get, user, by, id]`
+  - Auto-indexes on first use, incremental updates via file watcher
+  - ~400ms initial indexing, <1ms search on indexed data
+  - Zero binary size overhead (no ML model bundled)
+
+- **Languages supported:** TypeScript, JavaScript, Python, Rust, Go, Java, C#
+
+- **AI behavior improved:** Model now prefers `search_codebase` for conceptual queries and reserves grep for exact text matching — no more `\b(auth|login|token|...)\b` mega-patterns
+
+- **Grep tool guidance updated:** Explicit instruction to use `search_codebase` instead of complex OR-patterns
+
+**Performance (tested on IronCode src, ~1638 symbols):**
+
+| Metric             | Value                         |
+| ------------------ | ----------------------------- |
+| Initial index time | ~450ms                        |
+| Search time        | <1ms                          |
+| Memory overhead    | ~0 (BM25 inverted index only) |
+| Binary size added  | 0 MB (no ML model)            |
+
+### Feb 18, 2026 - Editor & Terminal Improvements
+
+**External editor with auto-install + redesigned built-in terminal:**
+
+- **`/editor` - External Editor Integration**
+  - Opens `$VISUAL` or `$EDITOR` or `nvim` by default
+  - Auto-detects if editor is installed via `which`
+  - Shows install popup if Neovim not found (cross-platform: brew, apt, dnf, pacman, apk, winget, choco, scoop)
+  - One-click install button directly from the popup
+
+- **`/terminal` - Redesigned Built-in Terminal**
+  - Clean terminal-like UI with no header/footer chrome
+  - Prompt at bottom with `~/path $ ` prefix (like real shell)
+  - Block cursor with left/right movement
+  - Streaming output (stdout/stderr appear in real-time)
+  - Syntax highlighting for file output (`cat file.ts`, `head file.py`, etc.)
+  - Fish-style history autosuggest (dim text, accept with Right/End)
+  - Tab completion for file/directory paths (single match auto-completes, multiple shows common prefix + options)
+  - Shell keybindings: Ctrl+A/E (home/end), Ctrl+U/K (clear line), Ctrl+W (delete word), Ctrl+L (clear screen)
+  - `cd` with directory validation, `clear`, `exit` commands
+  - Color-coded output: commands (primary+bold), errors (red), info (dim)
+
+### Feb 15, 2026 - Code Changes Panel
+
+**Code changes viewer with inline comments and hunk revert:**
+
+- 🔍 **Code Changes Panel** - View git diffs in a side panel without leaving your session. Open via command palette or `<leader>r` keybind
+- ↩️ **Revert Diff Hunk** - Press `r` to revert individual diff hunks. Supports both uncommitted and staged changes
+- 💬 **Inline Comments** - Press `c` to add comments on specific diff lines. Navigate with `n/p`, dismiss with `d`, send to chat with `f`
+- 🔄 **Mode Cycling** - Press `m` to cycle between Uncommitted, Staged, and vs-Main diff views
+- 📊 **Change Counts in Hint Bar** - The prompt hint bar now shows `<leader>r changes +N -N` with live addition/deletion counts
+- 🤖 **Auto-open on `/review`** - The code changes panel automatically opens alongside when the `/review` command runs as a subtask
+- 🎨 **Hunk Highlighting** - The current hunk is subtly highlighted in the diff view for easy identification
+
+**Keybinds:**
+
+- `j/k`: Navigate files
+- `↑↓`: Navigate diff lines
+- `r`: Revert current hunk
+- `c`: Add comment on current line
+- `n/p`: Navigate between comments
+- `d`: Dismiss selected comment
+- `f`: Send comment to chat
+- `m`: Cycle mode (uncommitted/staged/vs-main)
+- `g`: Refresh diffs
+- `Esc`: Close panel
+
 ### Feb 15, 2026 - AI SDK v6 Integration
 
 **Leveraging new AI SDK v6 features for better debugging and token efficiency:**
@@ -110,6 +184,10 @@ IronCode is a **high-performance CLI fork** of [OpenCode](https://github.com/ano
 
 - ⌨️ **CLI-First**: Powerful terminal UI optimized for command-line workflows
 - 🎯 **Git Source Control**: Full Git integration - stage, commit, diff, push without leaving TUI
+- 🔍 **Code Changes Panel**: Diff viewer with inline comments, hunk revert, and live change counts
+- 📝 **External Editor**: Opens `$EDITOR`/nvim with auto-install popup if not found
+- 💻 **Built-in Terminal**: Real terminal feel with syntax highlighting, fish-style autosuggest, and tab completion
+- 🔎 **Local Code Search**: BM25 + tree-sitter semantic search across your codebase — offline, zero latency, no ML model required
 - 🏠 **100% Local**: No cloud services, works completely offline
 - 🔒 **Privacy First**: Your code never leaves your machine
 - 🎯 **Lightweight**: Stripped down to core functionality - CLI only
@@ -218,6 +296,7 @@ IronCode rewrites key operations in native Rust with **measured real-world perfo
 - ✅ **Bash Parser**: Native tree-sitter bash command parsing (50-100x faster than WASM, 0.020ms per command)
 - ✅ **Directory Listing**: Fast recursive directory traversal
 - ✅ **VCS Info**: Lightning-fast git repository information (libgit2 vs subprocess)
+- ✅ **Code Search (BM25)**: Local semantic code search with tree-sitter symbol extraction — finds functions by concept, not just exact text
 - ✅ **System Stats**: CPU and memory monitoring
 
 **Benefits:**
@@ -475,6 +554,33 @@ gh auth login
 git config --global credential.helper '!gh auth git-credential'
 ```
 
+### Code Changes Panel
+
+IronCode includes a code changes viewer for reviewing diffs with inline comments:
+
+**Open Code Changes Panel:**
+
+- Press `<leader>r` (default: `Ctrl+X` then `R`)
+- Or use command palette (`Ctrl+P`) → "View code changes"
+- Auto-opens when `/review` command runs
+
+**Features:**
+
+- **Diff Viewer** - Color-coded diffs with hunk highlighting
+  - `j/k`: Navigate between files
+  - `↑↓`: Navigate diff lines
+  - `m`: Cycle mode (Uncommitted → Staged → vs Main)
+  - `g`: Refresh diffs
+- **Revert Hunk** - Undo individual changes
+  - `r`: Revert the current diff hunk (works for both uncommitted and staged)
+  - Active hunk is highlighted for easy identification
+- **Inline Comments** - Add notes to specific diff lines
+  - `c`: Add a comment on the current line
+  - `n/p`: Navigate between comments
+  - `d`: Dismiss selected comment
+  - `f`: Send comment to chat for AI to address
+- **Change Counts** - The hint bar shows live `+N -N` counts of total additions/deletions
+
 ### Provider-Specific Tools
 
 Enable native server-side tools from AI providers. These tools run on the provider's infrastructure (not locally), giving the model direct access to web search, code execution, and more.
@@ -649,6 +755,7 @@ IronCode is built with:
   - File I/O with zero-copy optimization
   - Pattern matching and regex search
   - Git repository information
+  - Code search with BM25 + tree-sitter symbol extraction
   - System resource monitoring
 
 ### Native Rust Architecture
@@ -668,6 +775,7 @@ IronCode is built with:
 │  │  • File I/O (zero-copy)         │   │
 │  │  • Glob/Grep (optimized)        │   │
 │  │  • Git operations (libgit2)     │   │
+│  │  • BM25 + tree-sitter search    │   │
 │  │  • System stats (sysinfo)       │   │
 │  └─────────────────────────────────┘   │
 └─────────────────────────────────────────┘
@@ -699,6 +807,9 @@ Contributions are welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) befo
 
 **Recent Contributions:**
 
+- ✅ **Local Code Search** (BM25 + tree-sitter semantic search, 7 languages, offline - Feb 2026)
+- ✅ **Editor & Terminal** (External editor with auto-install + redesigned terminal with autosuggest - Feb 2026)
+- ✅ **Code Changes Panel** (Diff viewer with hunk revert & inline comments - Feb 2026)
 - ✅ **Git Source Control UI** (Full TUI integration with libgit2 - Feb 2026)
 - ✅ **Streaming read optimization** (1.2-1.6x faster, 99.7% memory savings - Feb 2026)
 - ✅ **Grep streaming optimization** (90-99% memory reduction, GB-file capability - Feb 2026)
@@ -789,5 +900,5 @@ _Benchmarked on IronCode repository (dev branch, 100 iterations)_
 
 ## Acknowledgments
 
-- **OpenCode Team**: For creating the original open-source AI coding agent
+- **IronCode Team**: For creating the original open-source AI coding agent
 - All contributors to this fork
